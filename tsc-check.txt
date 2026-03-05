@@ -1,0 +1,2 @@
+﻿src/components/TreeView.tsx(334,9): error TS2322: Type '{ children: ({ node, style, dragHandle }: NodeRendererProps<TreeNode>) => Element; ref: MutableRefObject<any>; data: TreeNode[]; idAccessor: (node: TreeNode) => string; ... 10 more ...; onMove: (args: { ...; }) => void; }' is not assignable to type 'IntrinsicAttributes & TreeProps<TreeNode> & { ref?: ForwardedRef<TreeApi<TreeNode> | undefined> | undefined; }'.
+  Property 'canDrag' does not exist on type 'IntrinsicAttributes & TreeProps<TreeNode> & { ref?: ForwardedRef<TreeApi<TreeNode> | undefined> | undefined; }'.

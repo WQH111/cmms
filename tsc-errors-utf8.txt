@@ -1,0 +1,5 @@
+﻿src/components/TreeView.tsx(333,9): error TS2322: Type '(node: TreeNode) => TreeNode[] | undefined' is not assignable to type 'string | ((d: TreeNode) => readonly TreeNode[] | null) | undefined'.
+  Type '(node: TreeNode) => TreeNode[] | undefined' is not assignable to type '(d: TreeNode) => readonly TreeNode[] | null'.
+    Type 'TreeNode[] | undefined' is not assignable to type 'readonly TreeNode[] | null'.
+      Type 'undefined' is not assignable to type 'readonly TreeNode[] | null'.
+src/services/excelService.ts(535,11): error TS6133: 'nodeMap' is declared but its value is never read.

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "POG-cmms-staging-app",
+  "version": "0.1.0",
+  "identifier": "com.mrqihong.pog-cmms-staging-app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "POG CMMS Staging Software",
+        "width": 1200,
+        "height": 800
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "main-capability",
+          "description": "Main application capabilities",
+          "windows": [
+            "main"
+          ],
+          "permissions": [
+            "dialog:allow-save",
+            "dialog:allow-message",
+            "fs:allow-write-file",
+            "fs:allow-read-file",
+            "fs:default",
+            "sql:allow-load",
+            "sql:allow-execute",
+            "sql:allow-select",
+            "sql:allow-close",
+            "sql:default"
+          ]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "sql": {}
+  }
+}

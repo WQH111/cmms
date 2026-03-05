@@ -1,0 +1,183 @@
+/* src/components/NodePanel.css */
+.node-panel {
+  flex: 0 0 350px;
+  min-width: 350px;
+  max-width: 350px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.panel-header {
+  margin-bottom: 20px;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-icon {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.create-btn {
+  background-color: #4caf50;
+  color: white;
+}
+
+.create-btn:hover:not(:disabled) {
+  background-color: #45a049;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.edit-btn {
+  background-color: #2196f3;
+  color: white;
+}
+
+.edit-btn:hover:not(:disabled) {
+  background-color: #1976d2;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+}
+
+.delete-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+.delete-btn:hover:not(:disabled) {
+  background-color: #d32f2f;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
+}
+
+.selected-node-info {
+  padding: 16px;
+  background-color: #f5f5f5;
+  border-radius: 6px;
+  border-left: 4px solid #2196f3;
+}
+
+.selected-node-info h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.info-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  align-items: flex-start;
+}
+
+.info-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+  min-width: 90px;
+}
+
+.info-value {
+  font-size: 13px;
+  color: #333;
+  flex: 1;
+}
+
+.info-value.code {
+  font-family: 'Courier New', monospace;
+  background-color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.node-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 8px;
+  margin-right: 8px;
+}
+
+.new-badge {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.modified-badge {
+  background-color: #fff3e0;
+  color: #e65100;
+}
+
+@media (prefers-color-scheme: dark) {
+  .node-panel {
+    background: #2f2f2f;
+  }
+
+  .panel-header h3 {
+    color: #f6f6f6;
+  }
+
+  .selected-node-info {
+    background-color: #1e1e1e;
+    border-left-color: #2196f3;
+  }
+
+  .selected-node-info h4 {
+    color: #999;
+  }
+
+  .info-label {
+    color: #999;
+  }
+
+  .info-value {
+    color: #f6f6f6;
+  }
+
+  .info-value.code {
+    background-color: #333;
+  }
+}
