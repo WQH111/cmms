@@ -5,12 +5,10 @@ name: Build Multi-Platform App
 
 # 触发条件：什么时候运行这个工作流
 on:
-  # 当推送到 main 分支时触发
+  # 当推送到 main 分支或创建 tag 时触发
   push:
     branches:
       - main
-  # 当创建 tag 时触发（用于发布版本）
-  push:
     tags:
       - 'v*'
   # 允许手动触发
@@ -46,7 +44,7 @@ jobs:
         with:
           node-version: '20'  # 使用 Node.js 20
           cache: 'npm'        # 缓存 npm 依赖，加速构建
-          cache-dependency-path: pog-cmms-staging-app/package-lock.json
+          cache-dependency-path: cmms-staging-app/package-lock.json
 
       # 3. 安装 Rust（Tauri 需要）
       - name: Install Rust
@@ -71,12 +69,12 @@ jobs:
 
       # 5. 安装项目依赖
       - name: Install dependencies
-        working-directory: pog-cmms-staging-app
+        working-directory: cmms-staging-app
         run: npm ci  # ci 比 install 更快更可靠
 
       # 6. 构建应用
       - name: Build Tauri app
-        working-directory: pog-cmms-staging-app
+        working-directory: cmms-staging-app
         run: npm run tauri build
 
       # 7. 上传构建产物（Windows）
@@ -86,8 +84,8 @@ jobs:
         with:
           name: windows-installer
           path: |
-            pog-cmms-staging-app/src-tauri/target/release/bundle/msi/*.msi
-            pog-cmms-staging-app/src-tauri/target/release/bundle/nsis/*.exe
+            cmms-staging-app/src-tauri/target/release/bundle/msi/*.msi
+            cmms-staging-app/src-tauri/target/release/bundle/nsis/*.exe
 
       # 8. 上传构建产物（macOS）
       - name: Upload macOS artifacts
@@ -96,8 +94,8 @@ jobs:
         with:
           name: macos-installer
           path: |
-            pog-cmms-staging-app/src-tauri/target/release/bundle/dmg/*.dmg
-            pog-cmms-staging-app/src-tauri/target/release/bundle/macos/*.app
+            cmms-staging-app/src-tauri/target/release/bundle/dmg/*.dmg
+            cmms-staging-app/src-tauri/target/release/bundle/macos/*.app
 
       # 9. 上传构建产物（Linux）
       - name: Upload Linux artifacts
@@ -106,8 +104,8 @@ jobs:
         with:
           name: linux-installer
           path: |
-            pog-cmms-staging-app/src-tauri/target/release/bundle/deb/*.deb
-            pog-cmms-staging-app/src-tauri/target/release/bundle/appimage/*.AppImage
+            cmms-staging-app/src-tauri/target/release/bundle/deb/*.deb
+            cmms-staging-app/src-tauri/target/release/bundle/appimage/*.AppImage
 
   # 可选：自动发布到 GitHub Releases
   release:
