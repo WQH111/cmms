@@ -350,7 +350,7 @@ export async function importNodes(nodes: TreeNodeCreate[]): Promise<ImportResult
     }
 
     // Query each level separately
-    for (const [level, levelNodes] of levelGroups) {
+    for (const [level] of levelGroups) {
       // Get all existing nodes at this level
       const existing = await executeWithRetry(() =>
         db.select<Array<{ code: string; name: string; level: number }>>(
