@@ -1,8 +1,8 @@
 /* src/components/NodePanel.css */
 .node-panel {
-  flex: 0 0 350px;
-  min-width: 350px;
-  max-width: 350px;
+  flex: 0 0 400px;
+  min-width: 400px;
+  max-width: 400px;
   background: white;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -90,13 +90,34 @@
   background-color: #f5f5f5;
   border-radius: 6px;
   border-left: 4px solid #2196f3;
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
 }
 
 .selected-node-info h4 {
-  margin: 0 0 12px 0;
+  margin: 0 0 16px 0;
   font-size: 14px;
   font-weight: 600;
   color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.info-section {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.info-section:last-of-type {
+  border-bottom: none;
+}
+
+.section-title {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2196f3;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -129,6 +150,24 @@
   display: inline-block;
 }
 
+.info-value.notes {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background-color: white;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.badges-container {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .node-badge {
   display: inline-block;
   padding: 4px 12px;
@@ -137,8 +176,6 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-top: 8px;
-  margin-right: 8px;
 }
 
 .new-badge {
@@ -169,6 +206,10 @@
     color: #999;
   }
 
+  .section-title {
+    color: #64b5f6;
+  }
+
   .info-label {
     color: #999;
   }
@@ -179,5 +220,13 @@
 
   .info-value.code {
     background-color: #333;
+  }
+
+  .info-value.notes {
+    background-color: #333;
+  }
+
+  .info-section {
+    border-bottom-color: #444;
   }
 }

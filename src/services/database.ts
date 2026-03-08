@@ -69,9 +69,35 @@ export async function initDatabase(): Promise<Database> {
         is_modified INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
+
+        -- Basic identification fields
+        object_id TEXT,
+        original_id TEXT,
+        site_code TEXT,
+
+        -- Asset management fields
+        asset_category TEXT,
+        item_category TEXT,
+        part_number TEXT,
+        serial_number TEXT,
+        manufacturer TEXT,
+        model TEXT,
+        notes TEXT,
+        quantity TEXT,
+        barcode TEXT,
+        composed TEXT,
+        emission_point TEXT,
+        cost_center TEXT,
+
+        -- Custom fields (cf1-cf29) stored as JSON
+        custom_fields TEXT,
+
         FOREIGN KEY (parent_id) REFERENCES tree_nodes(id) ON DELETE CASCADE
       )
     `);
+
+    // Run migrations to add new columns to existing tables
+    await runMigrations(db);
 
     // Create indexes
     await db.execute(`
@@ -92,6 +118,51 @@ export async function initDatabase(): Promise<Database> {
     console.error('Failed to initialize database:', error);
     throw new Error(`Database initialization failed: ${error}`);
   }
+}
+
+/**
+ * Run database migrations to add new columns
+ */
+async function runMigrations(database: Database): Promise<void> {
+  console.log('🔄 Running database migrations...');
+
+  // List of new columns to add
+  const newColumns = [
+    'object_id TEXT',
+    'original_id TEXT',
+    'site_code TEXT',
+    'asset_category TEXT',
+    'item_category TEXT',
+    'part_number TEXT',
+    'serial_number TEXT',
+    'manufacturer TEXT',
+    'model TEXT',
+    'notes TEXT',
+    'quantity TEXT',
+    'barcode TEXT',
+    'composed TEXT',
+    'emission_point TEXT',
+    'cost_center TEXT',
+    'custom_fields TEXT',
+  ];
+
+  for (const column of newColumns) {
+    const columnName = column.split(' ')[0];
+    try {
+      // Try to add the column (will fail if it already exists)
+      await database.execute(`ALTER TABLE tree_nodes ADD COLUMN ${column}`);
+      console.log(`✅ Added column: ${columnName}`);
+    } catch (error: any) {
+      // Column already exists, ignore the error
+      if (error.toString().includes('duplicate column name')) {
+        console.log(`⏭️ Column already exists: ${columnName}`);
+      } else {
+        console.warn(`⚠️ Could not add column ${columnName}:`, error);
+      }
+    }
+  }
+
+  console.log('✅ Migrations completed');
 }
 
 export function getDatabase(): Database {

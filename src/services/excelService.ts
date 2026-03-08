@@ -87,6 +87,32 @@ export function extractNodesFromRow(row: ExcelRow, rowIndex: number): TreeNodeCr
   const nodes: TreeNodeCreate[] = [];
   let parentId: string | null = null;
 
+  // Extract custom fields (cf1-cf50)
+  // Support both exact match and partial match (with descriptions in parentheses)
+  const customFields: any = {};
+  const rowKeys = Object.keys(row);
+
+  for (let i = 1; i <= 50; i++) {
+    // Try exact match first
+    let labelKey = `cf${i} label`;
+    let valueKey = `cf${i} value`;
+
+    // If exact match not found, try partial match (e.g., "cf1 label (description)")
+    if (!(labelKey in row)) {
+      labelKey = rowKeys.find(key => key.startsWith(`cf${i} label`)) || labelKey;
+    }
+    if (!(valueKey in row)) {
+      valueKey = rowKeys.find(key => key.startsWith(`cf${i} value`)) || valueKey;
+    }
+
+    if (row[labelKey] || row[valueKey]) {
+      customFields[`cf${i}`] = {
+        label: row[labelKey] || '',
+        value: row[valueKey] || '',
+      };
+    }
+  }
+
   // Iterate through each level to extract nodes
   for (const levelConfig of LEVEL_COLUMNS) {
     const name = row[levelConfig.nameCol];
@@ -106,6 +132,28 @@ export function extractNodesFromRow(row: ExcelRow, rowIndex: number): TreeNodeCr
         system: levelConfig.level === 3 ? String(name || '') : undefined,
         subSystem: levelConfig.level === 5 ? String(name || '') : undefined,
         sortOrder: rowIndex,
+
+        // Basic identification fields
+        objectId: row['Object ID'] || undefined,
+        originalId: row['original id'] || undefined,
+        siteCode: row['Site code'] || undefined,
+
+        // Asset management fields
+        assetCategory: row['Asset category'] || undefined,
+        itemCategory: row['Item category'] || undefined,
+        partNumber: row['Part number'] || undefined,
+        serialNumber: row['Serial number'] || undefined,
+        manufacturer: row['Manufacturer'] || undefined,
+        model: row['Model'] || undefined,
+        notes: row['Notes'] || undefined,
+        quantity: row['Quantity'] ? String(row['Quantity']) : undefined,
+        barcode: row['Barcode'] || undefined,
+        composed: row['composed'] || undefined,
+        emissionPoint: row['Emission Point'] || undefined,
+        costCenter: row['Cost center'] || undefined,
+
+        // Custom fields
+        customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
       });
 
       parentId = nodeId; // Next level's parent
@@ -345,8 +393,12 @@ export async function importNodes(nodes: TreeNodeCreate[]): Promise<ImportResult
         await executeWithRetry(async () => {
           await db.execute(
             `INSERT INTO tree_nodes
-            (id, parent_id, level, name, code, description, system, sub_system, sort_order, is_new, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $10, $11)`,
+            (id, parent_id, level, name, code, description, system, sub_system, sort_order, is_new,
+             object_id, original_id, site_code,
+             asset_category, item_category, part_number, serial_number, manufacturer, model,
+             notes, quantity, barcode, composed, emission_point, cost_center, custom_fields,
+             created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
             [
               realId,
               realParentId,
@@ -357,6 +409,22 @@ export async function importNodes(nodes: TreeNodeCreate[]): Promise<ImportResult
               node.system || null,
               node.subSystem || null,
               node.sortOrder || 0,
+              node.objectId || null,
+              node.originalId || null,
+              node.siteCode || null,
+              node.assetCategory || null,
+              node.itemCategory || null,
+              node.partNumber || null,
+              node.serialNumber || null,
+              node.manufacturer || null,
+              node.model || null,
+              node.notes || null,
+              node.quantity || null,
+              node.barcode || null,
+              node.composed || null,
+              node.emissionPoint || null,
+              node.costCenter || null,
+              node.customFields ? JSON.stringify(node.customFields) : null,
               now,
               now,
             ]
@@ -521,6 +589,22 @@ export async function exportToExcel(): Promise<void> {
       system: string | null;
       sub_system: string | null;
       sort_order: number;
+      object_id: string | null;
+      original_id: string | null;
+      site_code: string | null;
+      asset_category: string | null;
+      item_category: string | null;
+      part_number: string | null;
+      serial_number: string | null;
+      manufacturer: string | null;
+      model: string | null;
+      notes: string | null;
+      quantity: string | null;
+      barcode: string | null;
+      composed: string | null;
+      emission_point: string | null;
+      cost_center: string | null;
+      custom_fields: string | null;
     }>>('SELECT * FROM tree_nodes ORDER BY sort_order, level, name');
 
     console.log('✅ Loaded', nodes.length, 'nodes');
@@ -554,8 +638,39 @@ export async function exportToExcel(): Promise<void> {
         }
       });
 
-      // Add description from the deepest node
+      // Add description and other fields from the deepest node
       row['Description '] = node.description || '';
+      row['Object ID'] = node.object_id || '';
+      row['original id'] = node.original_id || '';
+      row['Site code'] = node.site_code || '';
+      row['Asset category'] = node.asset_category || '';
+      row['Item category'] = node.item_category || '';
+      row['Part number'] = node.part_number || '';
+      row['Serial number'] = node.serial_number || '';
+      row['Manufacturer'] = node.manufacturer || '';
+      row['Model'] = node.model || '';
+      row['Notes'] = node.notes || '';
+      row['Quantity'] = node.quantity || '';
+      row['Barcode'] = node.barcode || '';
+      row['composed'] = node.composed || '';
+      row['Emission Point'] = node.emission_point || '';
+      row['Cost center'] = node.cost_center || '';
+
+      // Add custom fields (cf1-cf50)
+      if (node.custom_fields) {
+        try {
+          const customFields = JSON.parse(node.custom_fields);
+          for (let i = 1; i <= 50; i++) {
+            const cfKey = `cf${i}`;
+            if (customFields[cfKey]) {
+              row[`cf${i} label`] = customFields[cfKey].label || '';
+              row[`cf${i} value`] = customFields[cfKey].value || '';
+            }
+          }
+        } catch (e) {
+          console.error('Failed to parse custom fields:', e);
+        }
+      }
 
       excelRows.push(row);
 
@@ -571,12 +686,38 @@ export async function exportToExcel(): Promise<void> {
 
     // 4. Create workbook
     console.log('📊 Creating Excel workbook...');
-    const worksheet = XLSX.utils.json_to_sheet(excelRows, {
-      header: [
-        ...LEVEL_COLUMNS.flatMap(c => [c.nameCol, c.codeCol]),
-        'Description '
-      ]
-    });
+
+    // Build header array with all fields
+    const headers = [
+      'ID',
+      'Object ID',
+      'original id',
+      'Site code',
+      ...LEVEL_COLUMNS.flatMap(c => [c.nameCol, c.codeCol]),
+      'Name (Descr. Function Location)',
+      'Code (Function Number)',
+      'Description ',
+      'Asset category',
+      'Item category',
+      'Part number',
+      'Serial number',
+      'Manufacturer',
+      'Model',
+      'Notes',
+      'Quantity',
+      'Barcode',
+      'composed',
+      'Emission Point',
+      'Cost center',
+    ];
+
+    // Add custom field headers (cf1-cf50)
+    for (let i = 1; i <= 50; i++) {
+      headers.push(`cf${i} label`);
+      headers.push(`cf${i} value`);
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(excelRows, { header: headers });
 
     // Set column widths
     const colWidths = [

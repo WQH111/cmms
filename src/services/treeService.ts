@@ -4,16 +4,27 @@ import type { TreeNode, TreeNodeCreate, TreeNodeUpdate } from '../types/TreeNode
 
 export async function getAllNodes(): Promise<TreeNode[]> {
   const db = getDatabase();
-  const result = await db.select<TreeNode[]>(`
+  const result = await db.select<any[]>(`
     SELECT
       id, parent_id as parentId, level, name, code,
       description, system, sub_system as subSystem,
       sort_order as sortOrder, is_new as isNew, is_modified as isModified,
-      created_at as createdAt, updated_at as updatedAt
+      created_at as createdAt, updated_at as updatedAt,
+      object_id as objectId, original_id as originalId, site_code as siteCode,
+      asset_category as assetCategory, item_category as itemCategory,
+      part_number as partNumber, serial_number as serialNumber,
+      manufacturer, model, notes, quantity, barcode, composed,
+      emission_point as emissionPoint, cost_center as costCenter,
+      custom_fields as customFields
     FROM tree_nodes
     ORDER BY sort_order, name
   `);
-  return result;
+
+  // Parse custom_fields JSON
+  return result.map(node => ({
+    ...node,
+    customFields: node.customFields ? JSON.parse(node.customFields) : undefined
+  }));
 }
 
 export async function getNodesByLevel(level: number): Promise<TreeNode[]> {
@@ -127,6 +138,72 @@ export async function updateNode(id: string, updates: TreeNodeUpdate): Promise<v
   if (updates.isModified !== undefined) {
     fields.push(`is_modified = $${paramIndex++}`);
     values.push(updates.isModified ? 1 : 0);
+  }
+
+  // Asset management fields
+  if (updates.objectId !== undefined) {
+    fields.push(`object_id = $${paramIndex++}`);
+    values.push(updates.objectId);
+  }
+  if (updates.originalId !== undefined) {
+    fields.push(`original_id = $${paramIndex++}`);
+    values.push(updates.originalId);
+  }
+  if (updates.siteCode !== undefined) {
+    fields.push(`site_code = $${paramIndex++}`);
+    values.push(updates.siteCode);
+  }
+  if (updates.assetCategory !== undefined) {
+    fields.push(`asset_category = $${paramIndex++}`);
+    values.push(updates.assetCategory);
+  }
+  if (updates.itemCategory !== undefined) {
+    fields.push(`item_category = $${paramIndex++}`);
+    values.push(updates.itemCategory);
+  }
+  if (updates.partNumber !== undefined) {
+    fields.push(`part_number = $${paramIndex++}`);
+    values.push(updates.partNumber);
+  }
+  if (updates.serialNumber !== undefined) {
+    fields.push(`serial_number = $${paramIndex++}`);
+    values.push(updates.serialNumber);
+  }
+  if (updates.manufacturer !== undefined) {
+    fields.push(`manufacturer = $${paramIndex++}`);
+    values.push(updates.manufacturer);
+  }
+  if (updates.model !== undefined) {
+    fields.push(`model = $${paramIndex++}`);
+    values.push(updates.model);
+  }
+  if (updates.notes !== undefined) {
+    fields.push(`notes = $${paramIndex++}`);
+    values.push(updates.notes);
+  }
+  if (updates.quantity !== undefined) {
+    fields.push(`quantity = $${paramIndex++}`);
+    values.push(updates.quantity);
+  }
+  if (updates.barcode !== undefined) {
+    fields.push(`barcode = $${paramIndex++}`);
+    values.push(updates.barcode);
+  }
+  if (updates.composed !== undefined) {
+    fields.push(`composed = $${paramIndex++}`);
+    values.push(updates.composed);
+  }
+  if (updates.emissionPoint !== undefined) {
+    fields.push(`emission_point = $${paramIndex++}`);
+    values.push(updates.emissionPoint);
+  }
+  if (updates.costCenter !== undefined) {
+    fields.push(`cost_center = $${paramIndex++}`);
+    values.push(updates.costCenter);
+  }
+  if (updates.customFields !== undefined) {
+    fields.push(`custom_fields = $${paramIndex++}`);
+    values.push(JSON.stringify(updates.customFields));
   }
 
   fields.push(`updated_at = $${paramIndex++}`);

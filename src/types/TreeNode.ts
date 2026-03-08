@@ -1,4 +1,13 @@
 // src/types/TreeNode.ts
+
+// Custom fields structure (cf1-cf50)
+export interface CustomFields {
+  [key: string]: {
+    label?: string;
+    value?: string;
+  };
+}
+
 export interface TreeNode {
   id: string;
   parentId: string | null;
@@ -14,6 +23,28 @@ export interface TreeNode {
   createdAt: string;
   updatedAt: string;
   children?: TreeNode[];
+
+  // Basic identification fields
+  objectId?: string;
+  originalId?: string;
+  siteCode?: string;
+
+  // Asset management fields
+  assetCategory?: string;
+  itemCategory?: string;
+  partNumber?: string;
+  serialNumber?: string;
+  manufacturer?: string;
+  model?: string;
+  notes?: string;
+  quantity?: string;
+  barcode?: string;
+  composed?: string;
+  emissionPoint?: string;
+  costCenter?: string;
+
+  // Custom fields (cf1-cf29)
+  customFields?: CustomFields;
 }
 
 export interface TreeNodeCreate {
@@ -26,6 +57,28 @@ export interface TreeNodeCreate {
   system?: string;
   subSystem?: string;
   sortOrder?: number;
+
+  // Basic identification fields
+  objectId?: string;
+  originalId?: string;
+  siteCode?: string;
+
+  // Asset management fields
+  assetCategory?: string;
+  itemCategory?: string;
+  partNumber?: string;
+  serialNumber?: string;
+  manufacturer?: string;
+  model?: string;
+  notes?: string;
+  quantity?: string;
+  barcode?: string;
+  composed?: string;
+  emissionPoint?: string;
+  costCenter?: string;
+
+  // Custom fields
+  customFields?: CustomFields;
 }
 
 export interface TreeNodeUpdate {
@@ -36,4 +89,26 @@ export interface TreeNodeUpdate {
   subSystem?: string;
   sortOrder?: number;
   isModified?: boolean;
+
+  // Basic identification fields
+  objectId?: string;
+  originalId?: string;
+  siteCode?: string;
+
+  // Asset management fields
+  assetCategory?: string;
+  itemCategory?: string;
+  partNumber?: string;
+  serialNumber?: string;
+  manufacturer?: string;
+  model?: string;
+  notes?: string;
+  quantity?: string;
+  barcode?: string;
+  composed?: string;
+  emissionPoint?: string;
+  costCenter?: string;
+
+  // Custom fields
+  customFields?: CustomFields;
 }
