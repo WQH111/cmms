@@ -13,8 +13,9 @@ export function Toolbar() {
   const { searchNodesBy, loadNodes, filterNodesByLevel, filterLevel } = useTreeStore();
 
   const handleSearch = () => {
-    if (searchInput.trim()) {
-      searchNodesBy(searchInput);
+    const trimmed = searchInput.trim();
+    if (trimmed) {
+      searchNodesBy(trimmed);
     } else {
       loadNodes();
     }

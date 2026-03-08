@@ -225,18 +225,81 @@ export async function deleteNode(id: string): Promise<void> {
 export async function searchNodes(query: string): Promise<TreeNode[]> {
   const db = getDatabase();
   const searchPattern = `%${query}%`;
-  const result = await db.select<TreeNode[]>(
+
+  // First, find all matching nodes
+  const matchingNodes = await db.select<TreeNode[]>(
     `SELECT
       id, parent_id as parentId, level, name, code,
       description, system, sub_system as subSystem,
       sort_order as sortOrder, is_new as isNew, is_modified as isModified,
       created_at as createdAt, updated_at as updatedAt
     FROM tree_nodes
-    WHERE name LIKE $1 OR code LIKE $1 OR description LIKE $1
-    ORDER BY level, sort_order, name`,
+    WHERE name LIKE $1 OR code LIKE $1 OR description LIKE $1`,
     [searchPattern]
   );
-  return result;
+
+  if (matchingNodes.length === 0) {
+    return [];
+  }
+
+  // Collect all ancestor IDs
+  const ancestorIds = new Set<string>();
+  const collectAncestors = async (nodeId: string | null) => {
+    if (!nodeId || ancestorIds.has(nodeId)) return;
+
+    const parent = await db.select<Array<{ id: string; parent_id: string | null }>>(
+      'SELECT id, parent_id FROM tree_nodes WHERE id = $1',
+      [nodeId]
+    );
+
+    if (parent.length > 0) {
+      ancestorIds.add(parent[0].id);
+      if (parent[0].parent_id) {
+        await collectAncestors(parent[0].parent_id);
+      }
+    }
+  };
+
+  // Collect ancestors for all matching nodes
+  for (const node of matchingNodes) {
+    if (node.parentId) {
+      await collectAncestors(node.parentId);
+    }
+  }
+
+  // Fetch all ancestors
+  let allNodes = [...matchingNodes];
+
+  if (ancestorIds.size > 0) {
+    const ancestorIdArray = Array.from(ancestorIds);
+    const placeholders = ancestorIdArray.map((_, idx) => `$${idx + 1}`).join(',');
+
+    const ancestors = await db.select<TreeNode[]>(
+      `SELECT
+        id, parent_id as parentId, level, name, code,
+        description, system, sub_system as subSystem,
+        sort_order as sortOrder, is_new as isNew, is_modified as isModified,
+        created_at as createdAt, updated_at as updatedAt
+      FROM tree_nodes
+      WHERE id IN (${placeholders})`,
+      ancestorIdArray
+    );
+
+    allNodes = [...allNodes, ...ancestors];
+  }
+
+  // Remove duplicates and sort
+  const uniqueNodes = Array.from(
+    new Map(allNodes.map(node => [node.id, node])).values()
+  );
+
+  uniqueNodes.sort((a, b) => {
+    if (a.level !== b.level) return a.level - b.level;
+    if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
+    return a.name.localeCompare(b.name);
+  });
+
+  return uniqueNodes;
 }
 
 export async function moveNodeTo(

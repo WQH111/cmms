@@ -327,36 +327,63 @@ export async function importNodes(nodes: TreeNodeCreate[]): Promise<ImportResult
 
   try {
     // Get existing nodes to skip duplicates
-    const codes = nodes.filter(n => n.code).map(n => n.code);
+    // Build a comprehensive check that includes nodes with empty codes
     const existingSet = new Set<string>();
 
-    if (codes.length > 0) {
-      console.log('🔍 Checking existing nodes...');
+    console.log('🔍 Checking existing nodes...');
 
-      // SQLite has a limit of ~999 variables per query
-      // Split into batches to avoid "too many SQL variables" error
-      const BATCH_SIZE = 500;
+    // Check all nodes by level and name/code combination
+    // We need to check both nodes with codes and nodes without codes
+    const nodesToCheck = nodes.map(n => ({
+      level: n.level,
+      code: n.code || '',
+      name: n.name || ''
+    }));
 
-      for (let i = 0; i < codes.length; i += BATCH_SIZE) {
-        const batch = codes.slice(i, i + BATCH_SIZE);
-        const placeholders = batch.map((_, idx) => `$${idx + 1}`).join(',');
-
-        const existing = await executeWithRetry(() =>
-          db.select<Array<{ code: string; level: number }>>(
-            `SELECT code, level FROM tree_nodes WHERE code IN (${placeholders})`,
-            batch
-          )
-        );
-
-        existing.forEach(e => existingSet.add(`${e.code}_${e.level}`));
+    // Group by level for efficient querying
+    const levelGroups = new Map<number, typeof nodesToCheck>();
+    for (const node of nodesToCheck) {
+      if (!levelGroups.has(node.level)) {
+        levelGroups.set(node.level, []);
       }
-
-      console.log('Found', existingSet.size, 'existing nodes to skip');
+      levelGroups.get(node.level)!.push(node);
     }
+
+    // Query each level separately
+    for (const [level, levelNodes] of levelGroups) {
+      // Get all existing nodes at this level
+      const existing = await executeWithRetry(() =>
+        db.select<Array<{ code: string; name: string; level: number }>>(
+          `SELECT code, name, level FROM tree_nodes WHERE level = $1`,
+          [level]
+        )
+      );
+
+      // Build a set of existing node keys
+      for (const existingNode of existing) {
+        const existingCode = existingNode.code || '';
+        const existingName = existingNode.name || '';
+
+        // Match by code if both have code, otherwise match by name
+        if (existingCode) {
+          existingSet.add(`${existingCode}_${existingNode.level}`);
+        } else {
+          existingSet.add(`${existingName}_${existingNode.level}`);
+        }
+      }
+    }
+
+    console.log('Found', existingSet.size, 'existing nodes to skip');
 
     // Filter out duplicates before transaction
     const nodesToImport = nodes.filter(node => {
-      if (node.code && existingSet.has(`${node.code}_${node.level}`)) {
+      const nodeCode = node.code || '';
+      const nodeName = node.name || '';
+
+      // Check by code if available, otherwise by name
+      const key = nodeCode ? `${nodeCode}_${node.level}` : `${nodeName}_${node.level}`;
+
+      if (existingSet.has(key)) {
         skipped++;
         return false;
       }
@@ -378,6 +405,18 @@ export async function importNodes(nodes: TreeNodeCreate[]): Promise<ImportResult
     const now = new Date().toISOString();
     const nodeMap = new Map<string, string>(); // Temp ID -> Real UUID mapping
 
+    // Build a map of existing nodes in database (for parent lookup)
+    console.log('🔍 Building existing node map for parent resolution...');
+    const allExistingNodes = await db.select<Array<{ id: string; level: number; code: string; name: string }>>(
+      'SELECT id, level, code, name FROM tree_nodes'
+    );
+
+    for (const existingNode of allExistingNodes) {
+      const tempId = generateNodeId(existingNode.level, existingNode.code || existingNode.name);
+      nodeMap.set(tempId, existingNode.id);
+    }
+    console.log(`✅ Mapped ${nodeMap.size} existing nodes`);
+
     // NO TRANSACTIONS - Each INSERT is completely independent
     // This eliminates all lock contention issues
     console.log('📝 Importing nodes without transactions for maximum compatibility...');
@@ -387,7 +426,8 @@ export async function importNodes(nodes: TreeNodeCreate[]): Promise<ImportResult
 
       try {
         const realId = crypto.randomUUID();
-        const realParentId = node.parentId ? nodeMap.get(node.parentId) || null : null;
+        // Look up parent in both existing nodes and newly created nodes
+        const realParentId = node.parentId ? (nodeMap.get(node.parentId) || null) : null;
 
         // Each INSERT is completely independent with aggressive retry
         await executeWithRetry(async () => {
