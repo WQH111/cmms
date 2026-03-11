@@ -1,11 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { TreeView } from './components/TreeView';
 import { NodePanel } from './components/NodePanel';
+import { HierarchyPrintPreview } from './components/HierarchyPrintPreview';
 import { initDatabase } from './services/database';
 import './App.css';
 
 function App() {
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+
   useEffect(() => {
     // Test console output
     console.log('🎯🎯🎯 APP STARTED - Console is working!');
@@ -20,11 +23,15 @@ function App() {
 
   return (
     <div className="app">
-      <Toolbar />
+      <Toolbar onOpenPrintPreview={() => setShowPrintPreview(true)} />
       <main className="main-content">
         <TreeView />
         <NodePanel />
       </main>
+      <HierarchyPrintPreview
+        isOpen={showPrintPreview}
+        onClose={() => setShowPrintPreview(false)}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 // src/components/ImportDialog.tsx
 import { useState, useRef } from 'react';
-import { importExcelFile, type ImportResult } from '../services/excelService';
+import { importExcelFile, type ImportError, type ImportResult } from '../services/excelService';
 import { createBackup } from '../services/backupService';
 import './ImportDialog.css';
 
@@ -8,14 +8,77 @@ interface ImportDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onImportResult?: (snapshot: ImportIssueSnapshot) => void;
 }
 
-export function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialogProps) {
+export interface ImportIssueSnapshot {
+  fileName: string;
+  importedAt: string;
+  backupId: string | null;
+  result: ImportResult;
+}
+
+interface WarningBucket {
+  id: string;
+  title: string;
+  count: number;
+  tone: 'critical' | 'warning' | 'neutral';
+}
+
+function buildWarningBuckets(warnings: ImportError[]): WarningBucket[] {
+  const hierarchyConflicts = warnings.filter((warning) => warning.field === 'Code (Function Number)');
+  const missingCodes = warnings.filter(
+    (warning) =>
+      warning.field.includes('(code)') &&
+      warning.message.includes('missing code')
+  );
+  const emptyRows = warnings.filter((warning) => warning.message.includes('no level data'));
+  const otherWarnings = warnings.filter(
+    (warning) =>
+      !hierarchyConflicts.includes(warning) &&
+      !missingCodes.includes(warning) &&
+      !emptyRows.includes(warning)
+  );
+
+  return [
+    {
+      id: 'hierarchy',
+      title: 'Hierarchy Conflicts',
+      count: hierarchyConflicts.length,
+      tone: 'critical',
+    },
+    {
+      id: 'missing-code',
+      title: 'Missing Codes',
+      count: missingCodes.length,
+      tone: 'warning',
+    },
+    {
+      id: 'empty-row',
+      title: 'Empty Rows',
+      count: emptyRows.length,
+      tone: 'neutral',
+    },
+    {
+      id: 'other',
+      title: 'Other Warnings',
+      count: otherWarnings.length,
+      tone: 'warning',
+    },
+  ].filter((bucket) => bucket.count > 0);
+}
+
+export function ImportDialog({ isOpen, onClose, onSuccess, onImportResult }: ImportDialogProps) {
   const [file, setFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [backupId, setBackupId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const warningBuckets = result ? buildWarningBuckets(result.warnings) : [];
+  const highRiskWarnings = result
+    ? result.warnings.filter((warning) => warning.field === 'Code (Function Number)')
+    : [];
 
   if (!isOpen) return null;
 
@@ -50,14 +113,23 @@ export function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialogProps) 
       const importResult = await importExcelFile(file);
       console.log('✅ Import result:', importResult);
       setResult(importResult);
+      onImportResult?.({
+        fileName: file.name,
+        importedAt: new Date().toISOString(),
+        backupId: backup,
+        result: importResult,
+      });
 
       // 4. Refresh data if successful
-      if (importResult.success) {
+      if (importResult.success && importResult.warnings.length === 0) {
         console.log('🎉 Import successful, refreshing data...');
         setTimeout(() => {
           onSuccess();
           handleClose();
         }, 2000);
+      } else if (importResult.success) {
+        console.log('Import completed with warnings, keeping dialog open for review...');
+        onSuccess();
       }
     } catch (error) {
       console.error('❌ Import error:', error);
@@ -170,18 +242,54 @@ export function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialogProps) 
               )}
 
               {result.warnings.length > 0 && (
-                <div className="warning-list">
-                  <h4>Warnings ({result.warnings.length})</h4>
-                  <ul>
-                    {result.warnings.slice(0, 5).map((warning, idx) => (
-                      <li key={idx}>
-                        <strong>Row {warning.row}</strong> - {warning.field}: {warning.message}
-                      </li>
-                    ))}
-                    {result.warnings.length > 5 && (
-                      <li>... and {result.warnings.length - 5} more warnings</li>
-                    )}
-                  </ul>
+                <div className="warning-section">
+                  <div className="warning-dashboard">
+                    <div className="warning-dashboard-header">
+                      <h4>Anomaly Dashboard</h4>
+                      <span>{result.warnings.length} warnings detected</span>
+                    </div>
+                    <div className="warning-dashboard-grid">
+                      {warningBuckets.map((bucket) => (
+                        <div
+                          key={bucket.id}
+                          className={`warning-bucket warning-bucket-${bucket.tone}`}
+                        >
+                          <span className="warning-bucket-title">{bucket.title}</span>
+                          <strong className="warning-bucket-count">{bucket.count}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {highRiskWarnings.length > 0 && (
+                    <div className="warning-spotlight">
+                      <h4>High-Risk Anomalies</h4>
+                      <ul>
+                        {highRiskWarnings.slice(0, 3).map((warning, idx) => (
+                          <li key={idx}>
+                            <strong>Row {warning.row}</strong> - {warning.message}
+                          </li>
+                        ))}
+                        {highRiskWarnings.length > 3 && (
+                          <li>... and {highRiskWarnings.length - 3} more hierarchy conflicts</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="warning-list">
+                    <h4>Warnings ({result.warnings.length})</h4>
+                    <ul>
+                      {result.warnings.slice(0, 5).map((warning, idx) => (
+                        <li key={idx}>
+                          <strong>Row {warning.row}</strong> - {warning.field}: {warning.message}
+                        </li>
+                      ))}
+                      {result.warnings.length > 5 && (
+                        <li>... and {result.warnings.length - 5} more warnings</li>
+                      )}
+                    </ul>
+                  </div>
                 </div>
               )}
 

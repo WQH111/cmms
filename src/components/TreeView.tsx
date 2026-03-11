@@ -1,5 +1,5 @@
 ﻿// src/components/TreeView.tsx
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react';
 import { Tree, NodeRendererProps } from 'react-arborist';
 import { useTreeStore } from '../store/treeStore';
 import type { TreeNode } from '../types/TreeNode';
@@ -66,9 +66,16 @@ function buildTree(nodes: TreeNode[]): TreeNode[] {
 
 // ─── Node component (Pointer Events) ───
 function Node({ node, style }: NodeRendererProps<TreeNode>) {
-  const { selectNode, selectedNode } = useTreeStore();
+  const { selectNode, selectedNode, searchQuery } = useTreeStore();
   const isSelected = selectedNode?.id === node.data.id;
   const hasChildren = node.data.children && node.data.children.length > 0;
+  const trimmedSearchQuery = searchQuery.trim();
+  const normalizedSearchQuery = trimmedSearchQuery.toLowerCase();
+  const nameMatches = normalizedSearchQuery && node.data.name.toLowerCase().includes(normalizedSearchQuery);
+  const codeMatches = normalizedSearchQuery && node.data.code.toLowerCase().includes(normalizedSearchQuery);
+  const descriptionMatches = normalizedSearchQuery && (node.data.description?.toLowerCase().includes(normalizedSearchQuery) ?? false);
+  const hasVisibleTextMatch = Boolean(nameMatches || codeMatches);
+  const hasDescriptionOnlyMatch = Boolean(descriptionMatches && !hasVisibleTextMatch);
 
   // Local dragging state for visual rendering
   const [isDragging, setIsDragging] = useState(false);
@@ -200,6 +207,8 @@ function Node({ node, style }: NodeRendererProps<TreeNode>) {
         isSelected && 'selected',
         node.data.isNew && 'new',
         node.data.isModified && 'modified',
+        normalizedSearchQuery && 'search-active',
+        (hasVisibleTextMatch || hasDescriptionOnlyMatch) && 'search-match',
         isDragging && 'dragging',
       ].filter(Boolean).join(' ')}
       onClick={() => selectNode(node.data)}
@@ -236,9 +245,21 @@ function Node({ node, style }: NodeRendererProps<TreeNode>) {
       <span className={`node-level level-${Math.min(node.data.level, 6)}`}>
         L{node.data.level}
       </span>
-      <span className="node-name">{node.data.name}</span>
+      <span className="node-name">
+        {renderHighlightedText(node.data.name, trimmedSearchQuery)}
+      </span>
       {node.data.code && (
-        <span className="node-code">{node.data.code}</span>
+        <span className="node-code">
+          {renderHighlightedText(node.data.code, trimmedSearchQuery)}
+        </span>
+      )}
+      {hasDescriptionOnlyMatch && (
+        <span
+          className="node-match-indicator"
+          title="Matched in description"
+        >
+          Description match
+        </span>
       )}
     </div>
   );
@@ -246,12 +267,15 @@ function Node({ node, style }: NodeRendererProps<TreeNode>) {
 
 // ─── TreeView ───
 export function TreeView() {
-  const { nodes, loadNodes, loading } = useTreeStore();
+  const { nodes, loadNodes, loading, searchQuery, filterLevel, error } = useTreeStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<any>(null);
   const [containerHeight, setContainerHeight] = useState(600);
   const openStateRef = useRef<Record<string, boolean>>({});
   const prevLoadingRef = useRef(loading);
+  const isSearchActive = searchQuery.trim().length > 0;
+  const isLevelFilterActive = filterLevel !== null;
+  const trimmedSearchQuery = searchQuery.trim().toLowerCase();
 
   const saveOpenState = useCallback(() => {
     if (treeRef.current) {
@@ -299,6 +323,53 @@ export function TreeView() {
   useEffect(() => {
     if (treeRef.current && treeData.length > 0) {
       requestAnimationFrame(() => {
+        if (isSearchActive) {
+          const idsToExpand = new Set<string>();
+          const matchingNodes = nodes.filter((node) => matchesSearch(node, trimmedSearchQuery));
+
+          matchingNodes.forEach((node) => {
+            let currentParentId = node.parentId;
+            while (currentParentId) {
+              idsToExpand.add(currentParentId);
+              currentParentId = nodes.find((candidate) => candidate.id === currentParentId)?.parentId ?? null;
+            }
+          });
+
+          const openMatchingPaths = (node: any) => {
+            if (!node?.data?.id) return;
+
+            if (idsToExpand.has(node.data.id)) {
+              node.open();
+            } else if (node.isOpen) {
+              node.close();
+            }
+
+            node.children?.forEach((child: any) => openMatchingPaths(child));
+          };
+
+          treeRef.current?.root?.children?.forEach((node: any) => openMatchingPaths(node));
+          return;
+        }
+
+        if (isLevelFilterActive && filterLevel !== null) {
+          const expandToLevel = filterLevel - 1;
+
+          const openFilteredDepth = (node: any) => {
+            if (!node?.data?.id) return;
+
+            if (node.data.level <= expandToLevel && node.children?.length) {
+              node.open();
+            } else if (node.isOpen) {
+              node.close();
+            }
+
+            node.children?.forEach((child: any) => openFilteredDepth(child));
+          };
+
+          treeRef.current?.root?.children?.forEach((node: any) => openFilteredDepth(node));
+          return;
+        }
+
         const openState = openStateRef.current;
         if (Object.keys(openState).length > 0) {
           try {
@@ -334,7 +405,11 @@ export function TreeView() {
         }
       });
     }
-  }, [treeData]);
+  }, [filterLevel, isLevelFilterActive, isSearchActive, nodes, treeData, trimmedSearchQuery]);
+
+  const showEmptySearch = !loading && !error && isSearchActive && nodes.length === 0;
+  const showEmptyTree = !loading && !error && !isSearchActive && nodes.length === 0;
+  const shouldRenderTree = !error && !showEmptySearch && !showEmptyTree;
 
   return (
     <div
@@ -349,28 +424,91 @@ export function TreeView() {
           </div>
         </div>
       )}
-      <Tree
-        ref={treeRef}
-        data={treeData}
-        idAccessor={(node) => node.id}
-        childrenAccessor={(node) => node.children ?? null}
-        disableDrag={true}
-        disableDrop={true}
-        openByDefault={false}
-        width="100%"
-        height={containerHeight}
-        indent={24}
-        rowHeight={38}
-        renderRow={({ attrs, innerRef, children }) => (
-          <div {...attrs} ref={innerRef}>
-            {children}
-          </div>
-        )}
-      >
-        {Node}
-      </Tree>
+      {!loading && error && (
+        <div className="tree-empty-state tree-empty-state-error">
+          <h3>Search unavailable</h3>
+          <p>{error}</p>
+        </div>
+      )}
+      {showEmptySearch && (
+        <div className="tree-empty-state">
+          <h3>No results found</h3>
+          <p>No nodes matched "{searchQuery.trim()}".</p>
+        </div>
+      )}
+      {showEmptyTree && (
+        <div className="tree-empty-state">
+          <h3>No nodes available</h3>
+          <p>Import data or create a node to get started.</p>
+        </div>
+      )}
+      {shouldRenderTree && (
+        <Tree
+          ref={treeRef}
+          data={treeData}
+          idAccessor={(node) => node.id}
+          childrenAccessor={(node) => node.children ?? null}
+          disableDrag={true}
+          disableDrop={true}
+          openByDefault={false}
+          width="100%"
+          height={containerHeight}
+          indent={24}
+          rowHeight={38}
+          renderRow={({ attrs, innerRef, children }) => (
+            <div {...attrs} ref={innerRef}>
+              {children}
+            </div>
+          )}
+        >
+          {Node}
+        </Tree>
+      )}
     </div>
   );
+}
+
+function matchesSearch(node: TreeNode, query: string): boolean {
+  if (!query) return false;
+
+  return [node.name, node.code, node.description]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(query));
+}
+
+function renderHighlightedText(text: string, query: string): ReactNode {
+  if (!query) return text;
+
+  const normalizedText = text.toLowerCase();
+  const normalizedQuery = query.toLowerCase();
+  const segments: ReactNode[] = [];
+  let startIndex = 0;
+  let matchIndex = normalizedText.indexOf(normalizedQuery, startIndex);
+
+  while (matchIndex !== -1) {
+    if (matchIndex > startIndex) {
+      segments.push(text.slice(startIndex, matchIndex));
+    }
+
+    const endIndex = matchIndex + query.length;
+    segments.push(
+      <mark
+        key={`${matchIndex}-${endIndex}`}
+        className="match-highlight"
+      >
+        {text.slice(matchIndex, endIndex)}
+      </mark>
+    );
+
+    startIndex = endIndex;
+    matchIndex = normalizedText.indexOf(normalizedQuery, startIndex);
+  }
+
+  if (startIndex < text.length) {
+    segments.push(text.slice(startIndex));
+  }
+
+  return segments.length > 0 ? segments : text;
 }
 
 // ─── Validation ───

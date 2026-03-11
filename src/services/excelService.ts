@@ -21,6 +21,11 @@ interface ExcelRow {
   [key: string]: any;
 }
 
+interface CustomFieldHeaders {
+  labelHeader: string;
+  valueHeader: string;
+}
+
 // Excel 列映射配置
 const LEVEL_COLUMNS = [
   { level: 1, nameCol: 'Level 1 (Company)', codeCol: 'Level 1 (code)' },
@@ -109,6 +114,8 @@ export function extractNodesFromRow(row: ExcelRow, rowIndex: number): TreeNodeCr
       customFields[`cf${i}`] = {
         label: row[labelKey] || '',
         value: row[valueKey] || '',
+        labelHeader: labelKey,
+        valueHeader: valueKey,
       };
     }
   }
@@ -173,11 +180,109 @@ function generateNodeId(level: number, code: string): string {
   return `L${level}_${code}`.replace(/\s+/g, '_');
 }
 
+function getDefaultCustomFieldHeaders(index: number): CustomFieldHeaders {
+  return {
+    labelHeader: `cf${index} label`,
+    valueHeader: `cf${index} value`,
+  };
+}
+
+function normalizeCellValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  return String(value).trim();
+}
+
+function buildHierarchyConflictKey(row: ExcelRow): string {
+  const pathParts = LEVEL_COLUMNS.map((config) => {
+    const name = normalizeCellValue(row[config.nameCol]);
+    const code = normalizeCellValue(row[config.codeCol]);
+    return `${config.level}:${name}|${code}`;
+  });
+
+  const functionLocationName = normalizeCellValue(row['Name (Descr. Function Location)']);
+  const deepestLevelTag =
+    normalizeCellValue(row['Level 10 (Tag)']) ||
+    normalizeCellValue(row['Level 9 (Tag)']) ||
+    normalizeCellValue(row['Level 8 (Tag)']) ||
+    normalizeCellValue(row['Level 7 (code)']) ||
+    normalizeCellValue(row['Level 6 (code)']) ||
+    normalizeCellValue(row['Level 5 (code)']);
+
+  return [...pathParts, `name:${functionLocationName}`, `tag:${deepestLevelTag}`].join('||');
+}
+
+function getDeepestHierarchyTag(row: ExcelRow): string {
+  return (
+    normalizeCellValue(row['Level 10 (Tag)']) ||
+    normalizeCellValue(row['Level 9 (Tag)']) ||
+    normalizeCellValue(row['Level 8 (Tag)']) ||
+    normalizeCellValue(row['Level 7 (code)']) ||
+    normalizeCellValue(row['Level 6 (code)']) ||
+    normalizeCellValue(row['Level 5 (code)'])
+  );
+}
+
+function parseFunctionNumberPattern(functionNumber: string): { prefix: string; suffix: string } | null {
+  const match = functionNumber.match(/^(.*?)([A-Za-z]*\d+)$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    prefix: match[1],
+    suffix: match[2],
+  };
+}
+
+function collectCustomFieldHeaders(
+  nodes: Array<{ custom_fields: string | null }>
+): Map<number, CustomFieldHeaders> {
+  const headerMap = new Map<number, CustomFieldHeaders>();
+
+  for (let i = 1; i <= 50; i++) {
+    headerMap.set(i, getDefaultCustomFieldHeaders(i));
+  }
+
+  for (const node of nodes) {
+    if (!node.custom_fields) continue;
+
+    try {
+      const customFields = JSON.parse(node.custom_fields);
+
+      for (let i = 1; i <= 50; i++) {
+        const currentHeaders = headerMap.get(i) || getDefaultCustomFieldHeaders(i);
+        const customField = customFields[`cf${i}`];
+        if (!customField) continue;
+
+        headerMap.set(i, {
+          labelHeader: customField.labelHeader || currentHeaders.labelHeader,
+          valueHeader: customField.valueHeader || currentHeaders.valueHeader,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to parse custom field headers:', error);
+    }
+  }
+
+  return headerMap;
+}
+
 /**
  * Validate Excel data
  */
 export function validateExcelData(rows: ExcelRow[]): ImportError[] {
   const errors: ImportError[] = [];
+  const functionNumberConflicts = new Map<
+    string,
+    {
+      rows: number[];
+      functionNumbers: Set<string>;
+      deepestTag: string;
+    }
+  >();
 
   if (rows.length === 0) {
     errors.push({
@@ -227,10 +332,30 @@ export function validateExcelData(rows: ExcelRow[]): ImportError[] {
       });
     }
 
+    const functionNumber = normalizeCellValue(row['Code (Function Number)']);
+    if (functionNumber) {
+      const conflictKey = buildHierarchyConflictKey(row);
+      const deepestTag = getDeepestHierarchyTag(row);
+      const existingConflict = functionNumberConflicts.get(conflictKey);
+
+      if (existingConflict) {
+        existingConflict.rows.push(rowNum);
+        existingConflict.functionNumbers.add(functionNumber);
+      } else {
+        functionNumberConflicts.set(conflictKey, {
+          rows: [rowNum],
+          functionNumbers: new Set([functionNumber]),
+          deepestTag,
+        });
+      }
+    }
+
     // Check level continuity (cannot skip levels)
     let lastLevel = 0;
     for (const config of LEVEL_COLUMNS) {
-      const hasLevelData = row[config.nameCol] || row[config.codeCol];
+      const nameValue = row[config.nameCol];
+      const codeValue = row[config.codeCol];
+      const hasLevelData = nameValue || codeValue;
 
       if (hasLevelData) {
         if (config.level > lastLevel + 1) {
@@ -241,10 +366,61 @@ export function validateExcelData(rows: ExcelRow[]): ImportError[] {
             severity: 'error',
           });
         }
+
+        if (config.level > 1 && nameValue && !codeValue) {
+          errors.push({
+            row: rowNum,
+            field: config.codeCol,
+            message: `Level ${config.level} has a name but is missing code. Import will continue, but this row should be reviewed.`,
+            severity: 'warning',
+          });
+        }
+
         lastLevel = config.level;
       }
     }
   });
+
+  for (const conflict of functionNumberConflicts.values()) {
+    if (conflict.rows.length < 2 || conflict.functionNumbers.size < 2) {
+      continue;
+    }
+
+    const sortedRows = [...conflict.rows].sort((a, b) => a - b);
+    const sortedFunctionNumbers = Array.from(conflict.functionNumbers).sort();
+    const parsedPatterns = sortedFunctionNumbers.map(parseFunctionNumberPattern);
+    const hasPattern = parsedPatterns.every((pattern) => pattern !== null);
+    const sharedPrefix = hasPattern
+      ? new Set(parsedPatterns.map((pattern) => pattern!.prefix)).size === 1
+      : false;
+    const suffixesAreDifferent = hasPattern
+      ? new Set(parsedPatterns.map((pattern) => pattern!.suffix)).size > 1
+      : false;
+
+    if (sharedPrefix && suffixesAreDifferent) {
+      errors.push({
+        row: sortedRows[0],
+        field: 'Code (Function Number)',
+        message:
+          `Rows ${sortedRows.join(', ')} share the same hierarchy path and deepest tag ` +
+          `"${conflict.deepestTag || 'N/A'}", but Code (Function Number) changes by suffix: ` +
+          `${sortedFunctionNumbers.join(', ')}. This looks like duplicated source rows where only ` +
+          'the function-number tail was edited. Import will continue, but this source data should be reviewed.',
+        severity: 'warning',
+      });
+      continue;
+    }
+
+    errors.push({
+      row: sortedRows[0],
+      field: 'Code (Function Number)',
+      message:
+        `Rows ${sortedRows.join(', ')} appear to describe the same hierarchy node, ` +
+        `but Code (Function Number) is inconsistent: ${sortedFunctionNumbers.join(', ')}. ` +
+        'Import will continue, but this source data should be reviewed.',
+      severity: 'warning',
+    });
+  }
 
   return errors;
 }
@@ -522,7 +698,8 @@ export async function importExcelFile(file: File): Promise<ImportResult> {
     // 2. Validate data
     console.log('🔍 Validating data...');
     const validationErrors = validateExcelData(rows);
-    console.log('Validation errors:', validationErrors.length);
+    const validationWarnings = validationErrors.filter((e) => e.severity === 'warning');
+    console.log('Validation issues:', validationErrors.length);
 
     if (validationErrors.some((e) => e.severity === 'error')) {
       console.log('❌ Validation failed with errors');
@@ -530,7 +707,7 @@ export async function importExcelFile(file: File): Promise<ImportResult> {
         success: false,
         imported: 0,
         errors: validationErrors.filter((e) => e.severity === 'error'),
-        warnings: validationErrors.filter((e) => e.severity === 'warning'),
+        warnings: validationWarnings,
       };
     }
 
@@ -573,7 +750,10 @@ export async function importExcelFile(file: File): Promise<ImportResult> {
     const result = await importNodes(uniqueNodes);
     console.log('✅ Import complete:', result.imported, 'nodes imported');
 
-    return result;
+    return {
+      ...result,
+      warnings: [...validationWarnings, ...result.warnings],
+    };
   } catch (error) {
     console.error('❌ Import workflow failed:', error);
     throw error;
@@ -658,6 +838,7 @@ export async function exportToExcel(): Promise<void> {
     console.log('🌳 Building tree structure...');
     // nodeMap removed - traverseNode uses nodes.filter() directly
     const rootNodes = nodes.filter(n => !n.parent_id);
+    const customFieldHeaders = collectCustomFieldHeaders(nodes);
 
     // 3. Convert to Excel rows (flatten tree to rows)
     console.log('📝 Converting to Excel format...');
@@ -680,6 +861,8 @@ export async function exportToExcel(): Promise<void> {
 
       // Add description and other fields from the deepest node
       row['Description '] = node.description || '';
+      row['Name (Descr. Function Location)'] = node.name || '';
+      row['Code (Function Number)'] = node.code || '';
       row['Object ID'] = node.object_id || '';
       row['original id'] = node.original_id || '';
       row['Site code'] = node.site_code || '';
@@ -703,8 +886,9 @@ export async function exportToExcel(): Promise<void> {
           for (let i = 1; i <= 50; i++) {
             const cfKey = `cf${i}`;
             if (customFields[cfKey]) {
-              row[`cf${i} label`] = customFields[cfKey].label || '';
-              row[`cf${i} value`] = customFields[cfKey].value || '';
+              const headers = customFieldHeaders.get(i) || getDefaultCustomFieldHeaders(i);
+              row[headers.labelHeader] = customFields[cfKey].label || '';
+              row[headers.valueHeader] = customFields[cfKey].value || '';
             }
           }
         } catch (e) {
@@ -729,7 +913,6 @@ export async function exportToExcel(): Promise<void> {
 
     // Build header array with all fields
     const headers = [
-      'ID',
       'Object ID',
       'original id',
       'Site code',
@@ -753,8 +936,9 @@ export async function exportToExcel(): Promise<void> {
 
     // Add custom field headers (cf1-cf50)
     for (let i = 1; i <= 50; i++) {
-      headers.push(`cf${i} label`);
-      headers.push(`cf${i} value`);
+      const customHeaders = customFieldHeaders.get(i) || getDefaultCustomFieldHeaders(i);
+      headers.push(customHeaders.labelHeader);
+      headers.push(customHeaders.valueHeader);
     }
 
     const worksheet = XLSX.utils.json_to_sheet(excelRows, { header: headers });

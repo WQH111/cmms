@@ -5,6 +5,8 @@ export interface CustomFields {
   [key: string]: {
     label?: string;
     value?: string;
+    labelHeader?: string;
+    valueHeader?: string;
   };
 }
 

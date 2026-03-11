@@ -133,7 +133,8 @@
   font-size: 13px;
   font-weight: 500;
   color: #666;
-  min-width: 90px;
+  min-width: 170px;
+  word-break: break-word;
 }
 
 .info-value {

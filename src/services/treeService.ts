@@ -2,6 +2,17 @@
 import { getDatabase } from './database';
 import type { TreeNode, TreeNodeCreate, TreeNodeUpdate } from '../types/TreeNode';
 
+function parseTreeNode(row: any): TreeNode {
+  return {
+    ...row,
+    customFields: row.customFields ? JSON.parse(row.customFields) : undefined,
+  };
+}
+
+function normalizeNullableValue(value: string | number | boolean | null | undefined): string | number | null {
+  return value ?? null;
+}
+
 export async function getAllNodes(): Promise<TreeNode[]> {
   const db = getDatabase();
   const result = await db.select<any[]>(`
@@ -20,11 +31,7 @@ export async function getAllNodes(): Promise<TreeNode[]> {
     ORDER BY sort_order, name
   `);
 
-  // Parse custom_fields JSON
-  return result.map(node => ({
-    ...node,
-    customFields: node.customFields ? JSON.parse(node.customFields) : undefined
-  }));
+  return result.map(parseTreeNode);
 }
 
 export async function getNodesByLevel(level: number): Promise<TreeNode[]> {
@@ -74,6 +81,58 @@ export async function getNodesByParent(parentId: string | null): Promise<TreeNod
 
   const result = await db.select<TreeNode[]>(query, parentId ? [parentId] : []);
   return result;
+}
+
+export async function replaceAllNodes(nodes: TreeNode[]): Promise<void> {
+  const db = getDatabase();
+  const orderedNodes = [...nodes].sort((a, b) => {
+    if (a.level !== b.level) return a.level - b.level;
+    if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
+    return a.name.localeCompare(b.name);
+  });
+
+  await db.execute('DELETE FROM tree_nodes');
+
+  for (const node of orderedNodes) {
+    await db.execute(
+      `INSERT INTO tree_nodes
+      (id, parent_id, level, name, code, description, system, sub_system, sort_order, is_new, is_modified,
+       created_at, updated_at, object_id, original_id, site_code, asset_category, item_category, part_number,
+       serial_number, manufacturer, model, notes, quantity, barcode, composed, emission_point, cost_center, custom_fields)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)`,
+      [
+        node.id,
+        node.parentId,
+        node.level,
+        node.name,
+        node.code,
+        normalizeNullableValue(node.description),
+        normalizeNullableValue(node.system),
+        normalizeNullableValue(node.subSystem),
+        node.sortOrder || 0,
+        node.isNew ? 1 : 0,
+        node.isModified ? 1 : 0,
+        node.createdAt,
+        node.updatedAt,
+        normalizeNullableValue(node.objectId),
+        normalizeNullableValue(node.originalId),
+        normalizeNullableValue(node.siteCode),
+        normalizeNullableValue(node.assetCategory),
+        normalizeNullableValue(node.itemCategory),
+        normalizeNullableValue(node.partNumber),
+        normalizeNullableValue(node.serialNumber),
+        normalizeNullableValue(node.manufacturer),
+        normalizeNullableValue(node.model),
+        normalizeNullableValue(node.notes),
+        normalizeNullableValue(node.quantity),
+        normalizeNullableValue(node.barcode),
+        normalizeNullableValue(node.composed),
+        normalizeNullableValue(node.emissionPoint),
+        normalizeNullableValue(node.costCenter),
+        node.customFields ? JSON.stringify(node.customFields) : null,
+      ]
+    );
+  }
 }
 
 export async function createNode(node: TreeNodeCreate): Promise<string> {
