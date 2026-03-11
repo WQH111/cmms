@@ -10,6 +10,10 @@ function parseTreeNode(row: any): TreeNode {
 }
 
 function normalizeNullableValue(value: string | number | boolean | null | undefined): string | number | null {
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+
   return value ?? null;
 }
 

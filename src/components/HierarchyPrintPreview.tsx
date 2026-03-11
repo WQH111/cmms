@@ -121,7 +121,7 @@ export function HierarchyPrintPreview({ isOpen, onClose }: HierarchyPrintPreview
   const [chartPrintScale, setChartPrintScale] = useState(1);
   const chartViewportRef = useRef<HTMLDivElement | null>(null);
   const chartCanvasRef = useRef<HTMLDivElement | null>(null);
-  const standardSectionRef = useRef<HTMLElement | null>(null);
+  const standardSectionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;

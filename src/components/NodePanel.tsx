@@ -47,12 +47,20 @@ function normalizeDisplayValue(value: unknown): string | null {
 }
 
 function getExcelDisplayFields(node: TreeNode): DisplayField[] {
-  return EXCEL_FIELD_CONFIG
-    .map(({ key, label, variant }) => {
-      const value = normalizeDisplayValue(node[key]);
-      return value ? { label, value, variant } : null;
-    })
-    .filter((field): field is DisplayField => Boolean(field));
+  const fields: DisplayField[] = [];
+
+  for (const { key, label, variant } of EXCEL_FIELD_CONFIG) {
+    const value = normalizeDisplayValue(node[key]);
+    if (!value) continue;
+
+    fields.push(
+      variant
+        ? { label, value, variant }
+        : { label, value }
+    );
+  }
+
+  return fields;
 }
 
 export function NodePanel() {
@@ -88,13 +96,17 @@ export function NodePanel() {
 
   const displayFields = selectedNode ? getExcelDisplayFields(selectedNode) : [];
   const customFields = selectedNode?.customFields
-    ? Object.entries(selectedNode.customFields)
-        .map(([key, field]) => {
-          const label = normalizeDisplayValue(field.label) || key;
-          const value = normalizeDisplayValue(field.value);
-          return label || value ? { label, value: value || '-' } : null;
-        })
-        .filter((field): field is { label: string; value: string } => Boolean(field))
+    ? Object.entries(selectedNode.customFields).reduce<Array<{ label: string; value: string }>>((fields, [key, field]) => {
+        const label = normalizeDisplayValue(field.label) || key;
+        const value = normalizeDisplayValue(field.value);
+
+        if (!label && !value) {
+          return fields;
+        }
+
+        fields.push({ label, value: value || '-' });
+        return fields;
+      }, [])
     : [];
 
   return (

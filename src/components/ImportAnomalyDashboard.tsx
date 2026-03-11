@@ -28,12 +28,14 @@ function buildWarningBuckets(warnings: ImportError[]): WarningBucket[] {
       !emptyRows.includes(warning)
   );
 
-  return [
+  const buckets: WarningBucket[] = [
     { id: 'hierarchy', title: 'Hierarchy Conflicts', count: hierarchyConflicts.length, tone: 'critical' },
     { id: 'missing-code', title: 'Missing Codes', count: missingCodes.length, tone: 'warning' },
     { id: 'empty-row', title: 'Empty Rows', count: emptyRows.length, tone: 'neutral' },
     { id: 'other', title: 'Other Warnings', count: otherWarnings.length, tone: 'warning' },
-  ].filter((bucket) => bucket.count > 0);
+  ];
+
+  return buckets.filter((bucket) => bucket.count > 0);
 }
 
 function formatTimestamp(value: string): string {

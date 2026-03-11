@@ -40,7 +40,7 @@ function buildWarningBuckets(warnings: ImportError[]): WarningBucket[] {
       !emptyRows.includes(warning)
   );
 
-  return [
+  const buckets: WarningBucket[] = [
     {
       id: 'hierarchy',
       title: 'Hierarchy Conflicts',
@@ -65,7 +65,9 @@ function buildWarningBuckets(warnings: ImportError[]): WarningBucket[] {
       count: otherWarnings.length,
       tone: 'warning',
     },
-  ].filter((bucket) => bucket.count > 0);
+  ];
+
+  return buckets.filter((bucket) => bucket.count > 0);
 }
 
 export function ImportDialog({ isOpen, onClose, onSuccess, onImportResult }: ImportDialogProps) {
