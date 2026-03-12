@@ -27,6 +27,9 @@ interface WarningBucket {
 
 function buildWarningBuckets(warnings: ImportError[]): WarningBucket[] {
   const hierarchyConflicts = warnings.filter((warning) => warning.field === 'Code (Function Number)');
+  const trackedColumnGaps = warnings.filter(
+    (warning) => warning.field === 'AN' || warning.field === 'AO'
+  );
   const missingCodes = warnings.filter(
     (warning) =>
       warning.field.includes('(code)') &&
@@ -36,6 +39,7 @@ function buildWarningBuckets(warnings: ImportError[]): WarningBucket[] {
   const otherWarnings = warnings.filter(
     (warning) =>
       !hierarchyConflicts.includes(warning) &&
+      !trackedColumnGaps.includes(warning) &&
       !missingCodes.includes(warning) &&
       !emptyRows.includes(warning)
   );
@@ -46,6 +50,12 @@ function buildWarningBuckets(warnings: ImportError[]): WarningBucket[] {
       title: 'Hierarchy Conflicts',
       count: hierarchyConflicts.length,
       tone: 'critical',
+    },
+    {
+      id: 'tracked-columns',
+      title: 'AN/AO Empty',
+      count: trackedColumnGaps.length,
+      tone: 'warning',
     },
     {
       id: 'missing-code',

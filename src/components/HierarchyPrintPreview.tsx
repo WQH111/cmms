@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TreeNode } from '../types/TreeNode';
 import { getAllNodes } from '../services/treeService';
+import { compareTreeNodes } from '../utils/treeSort';
 import previewStyles from './HierarchyPrintPreview.css?raw';
 import './HierarchyPrintPreview.css';
 
@@ -43,12 +44,7 @@ function buildPrintableTree(nodes: TreeNode[]): PrintableNode[] {
   }
 
   const sortNodes = (items: PrintableNode[]) => {
-    items.sort((a, b) => {
-      if ((a.sortOrder || 0) !== (b.sortOrder || 0)) {
-        return (a.sortOrder || 0) - (b.sortOrder || 0);
-      }
-      return a.name.localeCompare(b.name);
-    });
+    items.sort(compareTreeNodes);
 
     for (const item of items) {
       sortNodes(item.children);

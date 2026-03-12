@@ -2,6 +2,7 @@
 import * as XLSX from 'xlsx';
 import type { TreeNodeCreate } from '../types/TreeNode';
 import { getDatabase, initDatabase, executeWithRetry } from './database';
+import { ensureAhLevelCustomField } from '../utils/ahLevel';
 
 export interface ImportError {
   row: number;
@@ -19,11 +20,18 @@ export interface ImportResult {
 
 interface ExcelRow {
   [key: string]: any;
+  __trackedColumns__?: Record<string, TrackedColumnValue>;
 }
 
 interface CustomFieldHeaders {
   labelHeader: string;
   valueHeader: string;
+}
+
+interface TrackedColumnValue {
+  letter: string;
+  header: string;
+  value: unknown;
 }
 
 // Excel 列映射配置
@@ -39,6 +47,37 @@ const LEVEL_COLUMNS = [
   { level: 9, nameCol: 'Level 9 (Sub-Component)', codeCol: 'Level 9 (Tag)' },
   { level: 10, nameCol: 'Level 10 (Sub-Sub-Component)', codeCol: 'Level 10 (Tag)' },
 ];
+
+const REQUIRED_TRACKED_COLUMNS = ['AN', 'AO'] as const;
+
+function getTrackedColumnHeader(worksheet: XLSX.WorkSheet, letter: string): string {
+  const headerCell = worksheet[`${letter}1`];
+  return normalizeCellValue(headerCell?.v) || letter;
+}
+
+function attachTrackedColumnValues(rows: ExcelRow[], worksheet: XLSX.WorkSheet): ExcelRow[] {
+  return rows.map((row, index) => {
+    const excelRowNumber = index + 2;
+    const trackedColumns: Record<string, TrackedColumnValue> = {};
+
+    for (const letter of REQUIRED_TRACKED_COLUMNS) {
+      trackedColumns[letter] = {
+        letter,
+        header: getTrackedColumnHeader(worksheet, letter),
+        value: worksheet[`${letter}${excelRowNumber}`]?.v,
+      };
+    }
+
+    return {
+      ...row,
+      __trackedColumns__: trackedColumns,
+    };
+  });
+}
+
+function getTrackedColumnValue(row: ExcelRow, letter: string): TrackedColumnValue | null {
+  return row.__trackedColumns__?.[letter] ?? null;
+}
 
 /**
  * Read Excel file and parse to JSON
@@ -67,8 +106,9 @@ export async function readExcelFile(file: File): Promise<ExcelRow[]> {
 
         // Convert to JSON, using first row as header
         const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet);
+        const enrichedRows = attachTrackedColumnValues(jsonData, worksheet);
         console.log('✅ Excel parsed successfully, rows:', jsonData.length);
-        resolve(jsonData);
+        resolve(enrichedRows);
       } catch (error) {
         console.error('❌ Failed to parse Excel:', error);
         reject(new Error(`Failed to parse Excel file: ${error}`));
@@ -160,7 +200,10 @@ export function extractNodesFromRow(row: ExcelRow, rowIndex: number): TreeNodeCr
         costCenter: row['Cost center'] || undefined,
 
         // Custom fields
-        customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
+        customFields: ensureAhLevelCustomField(
+          Object.keys(customFields).length > 0 ? customFields : undefined,
+          levelConfig.level
+        ),
       });
 
       parentId = nodeId; // Next level's parent
@@ -330,6 +373,22 @@ export function validateExcelData(rows: ExcelRow[]): ImportError[] {
         message: 'This row has no level data',
         severity: 'warning',
       });
+    }
+
+    if (hasData) {
+      for (const letter of REQUIRED_TRACKED_COLUMNS) {
+        const trackedColumn = getTrackedColumnValue(row, letter);
+        if (!trackedColumn) continue;
+
+        if (!normalizeCellValue(trackedColumn.value)) {
+          errors.push({
+            row: rowNum,
+            field: letter,
+            message: `Column ${letter} (${trackedColumn.header}) is empty. Import will continue, but this row should be reviewed.`,
+            severity: 'warning',
+          });
+        }
+      }
     }
 
     const functionNumber = normalizeCellValue(row['Code (Function Number)']);

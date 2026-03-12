@@ -1,5 +1,6 @@
 // src/services/database.ts
 import Database from '@tauri-apps/plugin-sql';
+import { normalizeCustomFieldsJson } from '../utils/ahLevel';
 
 let db: Database | null = null;
 
@@ -98,6 +99,7 @@ export async function initDatabase(): Promise<Database> {
 
     // Run migrations to add new columns to existing tables
     await runMigrations(db);
+    await normalizeExistingAhLevels(db);
 
     // Create indexes
     await db.execute(`
@@ -163,6 +165,22 @@ async function runMigrations(database: Database): Promise<void> {
   }
 
   console.log('✅ Migrations completed');
+}
+
+async function normalizeExistingAhLevels(database: Database): Promise<void> {
+  const nodes = await database.select<Array<{
+    id: string;
+    level: number;
+    custom_fields: string | null;
+  }>>('SELECT id, level, custom_fields FROM tree_nodes');
+
+  for (const node of nodes) {
+    const normalizedCustomFields = normalizeCustomFieldsJson(node.custom_fields, node.level);
+    await database.execute(
+      'UPDATE tree_nodes SET custom_fields = $1 WHERE id = $2',
+      [normalizedCustomFields, node.id]
+    );
+  }
 }
 
 export function getDatabase(): Database {
