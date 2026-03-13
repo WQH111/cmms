@@ -2,7 +2,6 @@
 import * as XLSX from 'xlsx';
 import type { TreeNodeCreate } from '../types/TreeNode';
 import { getDatabase, initDatabase, executeWithRetry } from './database';
-import { ensureAhLevelCustomField } from '../utils/ahLevel';
 
 export interface ImportError {
   row: number;
@@ -200,10 +199,7 @@ export function extractNodesFromRow(row: ExcelRow, rowIndex: number): TreeNodeCr
         costCenter: row['Cost center'] || undefined,
 
         // Custom fields
-        customFields: ensureAhLevelCustomField(
-          Object.keys(customFields).length > 0 ? customFields : undefined,
-          levelConfig.level
-        ),
+        customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
       });
 
       parentId = nodeId; // Next level's parent

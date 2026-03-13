@@ -1,23 +1,12 @@
 // src/services/treeService.ts
 import { getDatabase } from './database';
-import type { CustomFields, TreeNode, TreeNodeCreate, TreeNodeUpdate } from '../types/TreeNode';
+import type { TreeNode, TreeNodeCreate, TreeNodeUpdate } from '../types/TreeNode';
 import { compareTreeNodes } from '../utils/treeSort';
-import { ensureAhLevelCustomField, normalizeCustomFieldsJson } from '../utils/ahLevel';
 
 function parseTreeNode(row: any): TreeNode {
-  let parsedCustomFields: CustomFields | undefined;
-
-  if (row.customFields) {
-    try {
-      parsedCustomFields = JSON.parse(row.customFields);
-    } catch (_error) {
-      parsedCustomFields = undefined;
-    }
-  }
-
   return {
     ...row,
-    customFields: ensureAhLevelCustomField(parsedCustomFields, row.level),
+    customFields: row.customFields ? JSON.parse(row.customFields) : undefined,
   };
 }
 
@@ -141,7 +130,7 @@ export async function replaceAllNodes(nodes: TreeNode[]): Promise<void> {
         normalizeNullableValue(node.composed),
         normalizeNullableValue(node.emissionPoint),
         normalizeNullableValue(node.costCenter),
-        JSON.stringify(ensureAhLevelCustomField(node.customFields, node.level)),
+        node.customFields ? JSON.stringify(node.customFields) : null,
       ]
     );
   }
@@ -151,12 +140,11 @@ export async function createNode(node: TreeNodeCreate): Promise<string> {
   const db = getDatabase();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const normalizedCustomFields = ensureAhLevelCustomField(node.customFields, node.level);
 
   await db.execute(
     `INSERT INTO tree_nodes
-    (id, parent_id, level, name, code, description, system, sub_system, sort_order, custom_fields, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    (id, parent_id, level, name, code, description, system, sub_system, sort_order, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       id,
       node.parentId,
@@ -167,7 +155,6 @@ export async function createNode(node: TreeNodeCreate): Promise<string> {
       node.system || null,
       node.subSystem || null,
       node.sortOrder || 0,
-      JSON.stringify(normalizedCustomFields),
       now,
       now,
     ]
@@ -179,7 +166,6 @@ export async function createNode(node: TreeNodeCreate): Promise<string> {
 export async function updateNode(id: string, updates: TreeNodeUpdate): Promise<void> {
   const db = getDatabase();
   const now = new Date().toISOString();
-  let currentLevel: number | null = null;
 
   const fields: string[] = [];
   const values: any[] = [];
@@ -276,20 +262,8 @@ export async function updateNode(id: string, updates: TreeNodeUpdate): Promise<v
     values.push(updates.costCenter);
   }
   if (updates.customFields !== undefined) {
-    if (currentLevel === null) {
-      const levelResult = await db.select<Array<{ level: number }>>(
-        'SELECT level FROM tree_nodes WHERE id = $1',
-        [id]
-      );
-      currentLevel = levelResult[0]?.level ?? null;
-    }
-
     fields.push(`custom_fields = $${paramIndex++}`);
-    values.push(
-      JSON.stringify(
-        ensureAhLevelCustomField(updates.customFields, currentLevel ?? 1)
-      )
-    );
+    values.push(JSON.stringify(updates.customFields));
   }
 
   fields.push(`updated_at = $${paramIndex++}`);
@@ -391,20 +365,12 @@ export async function moveNodeTo(
 ): Promise<void> {
   const db = getDatabase();
   const now = new Date().toISOString();
-  const currentNodeResult = await db.select<Array<{ custom_fields: string | null }>>(
-    'SELECT custom_fields FROM tree_nodes WHERE id = $1',
-    [nodeId]
-  );
-  const normalizedCustomFields = normalizeCustomFieldsJson(
-    currentNodeResult[0]?.custom_fields ?? null,
-    newLevel
-  );
 
   await db.execute(
     `UPDATE tree_nodes
-    SET parent_id = $1, level = $2, is_modified = 1, custom_fields = $3, updated_at = $4
-    WHERE id = $5`,
-    [newParentId, newLevel, normalizedCustomFields, now, nodeId]
+    SET parent_id = $1, level = $2, is_modified = 1, updated_at = $3
+    WHERE id = $4`,
+    [newParentId, newLevel, now, nodeId]
   );
 
   // 递归更新所有子节点的层级
@@ -416,18 +382,17 @@ async function updateChildrenLevels(parentId: string, parentLevel: number): Prom
   const now = new Date().toISOString();
 
   // 获取所有子节点
-  const children = await db.select<Array<{ id: string; custom_fields: string | null }>>(
-    'SELECT id, custom_fields FROM tree_nodes WHERE parent_id = $1',
+  const children = await db.select<TreeNode[]>(
+    'SELECT id FROM tree_nodes WHERE parent_id = $1',
     [parentId]
   );
 
   // 更新每个子节点的层级
   for (const child of children) {
     const newLevel = parentLevel + 1;
-    const normalizedCustomFields = normalizeCustomFieldsJson(child.custom_fields, newLevel);
     await db.execute(
-      `UPDATE tree_nodes SET level = $1, custom_fields = $2, updated_at = $3 WHERE id = $4`,
-      [newLevel, normalizedCustomFields, now, child.id]
+      `UPDATE tree_nodes SET level = $1, updated_at = $2 WHERE id = $3`,
+      [newLevel, now, child.id]
     );
 
     // 递归更新子节点的子节点
